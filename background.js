@@ -5,6 +5,7 @@
 // activeSessions only stores the *start* of the current live segment.
 // Every 30s a tick alarm flushes elapsed → storage so the SW can safely sleep.
 let activeSessions = {};
+const sessionVersions = {};
 
 // On SW restart, recover any sessions that were "open" when SW went to sleep
 (async function recoverSessions() {
@@ -70,6 +71,51 @@ async function addAccumulated(hostname, seconds) {
   return data.sessions[today].accumulated;
 }
 
+function getSessionVersion(hostname) {
+  return sessionVersions[hostname] || 0;
+}
+
+function bumpSessionVersion(hostname) {
+  sessionVersions[hostname] = getSessionVersion(hostname) + 1;
+  return sessionVersions[hostname];
+}
+
+// Prevent stale tick writes from re-applying elapsed time that existed before a reset.
+async function addAccumulatedIfSessionUnchanged(hostname, seconds, expectedStartTime, expectedVersion) {
+  if (seconds <= 0) return null;
+  if (getSessionVersion(hostname) !== expectedVersion) return null;
+
+  const live = activeSessions[hostname];
+  if (!live || live.startTime !== expectedStartTime) return null;
+
+  const data = await getSiteData(hostname);
+
+  if (getSessionVersion(hostname) !== expectedVersion) return null;
+  const liveAfterRead = activeSessions[hostname];
+  if (!liveAfterRead || liveAfterRead.startTime !== expectedStartTime) return null;
+
+  const today = todayKey();
+  if (!data.sessions[today]) data.sessions[today] = { accumulated: 0 };
+  data.sessions[today].accumulated = (data.sessions[today].accumulated || 0) + seconds;
+  await saveSiteData(hostname, data);
+  return data.sessions[today].accumulated;
+}
+
+// Used by stopTracking to avoid writing stale elapsed time after a reset.
+async function addAccumulatedIfVersionUnchanged(hostname, seconds, expectedVersion) {
+  if (seconds <= 0) return null;
+  if (getSessionVersion(hostname) !== expectedVersion) return null;
+
+  const data = await getSiteData(hostname);
+
+  if (getSessionVersion(hostname) !== expectedVersion) return null;
+  const today = todayKey();
+  if (!data.sessions[today]) data.sessions[today] = { accumulated: 0 };
+  data.sessions[today].accumulated = (data.sessions[today].accumulated || 0) + seconds;
+  await saveSiteData(hostname, data);
+  return data.sessions[today].accumulated;
+}
+
 // ─── Tab / Focus Tracking ────────────────────────────────────────────────────
 
 async function startTracking(tabId, hostname) {
@@ -97,12 +143,13 @@ async function persistOpenSessions() {
 async function stopTracking(hostname) {
   if (!hostname || !activeSessions[hostname]) return;
   const session = activeSessions[hostname];
+  const expectedVersion = getSessionVersion(hostname);
   const elapsed = Math.floor((Date.now() - session.startTime) / 1000);
   delete activeSessions[hostname];
   clearReminder(hostname);
   await persistOpenSessions(); // remove from persisted map
 
-  const newTotal = await addAccumulated(hostname, elapsed);
+  const newTotal = await addAccumulatedIfVersionUnchanged(hostname, elapsed, expectedVersion);
 
   // Update badge to inactive
   try { chrome.action.setBadgeText({ text: '', tabId: session.tabId }); } catch(e) {}
@@ -114,9 +161,10 @@ async function stopTracking(hostname) {
 
   // Check if exceeded limit
   const data = await getSiteData(hostname);
+  const totalForLimit = newTotal !== null ? newTotal : await getTodayAccumulated(hostname);
   if (data.timeLimit) {
     const limitSecs = data.timeLimit * 60;
-    if (newTotal > limitSecs) {
+    if (totalForLimit > limitSecs) {
       await chrome.storage.local.set({ [`__exceeded__${hostname}`]: true });
     }
   }
@@ -241,12 +289,25 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 async function handleTick() {
   const now = Date.now();
   for (const [hostname, session] of Object.entries(activeSessions)) {
-    const elapsed = Math.floor((now - session.startTime) / 1000);
+    const expectedStartTime = session.startTime;
+    const expectedVersion = getSessionVersion(hostname);
+    const elapsed = Math.floor((now - expectedStartTime) / 1000);
     if (elapsed > 0) {
-      await addAccumulated(hostname, elapsed);
-      // Re-anchor start so we don't double-count
-      activeSessions[hostname].startTime = now;
-      await persistOpenSessions();
+      const updated = await addAccumulatedIfSessionUnchanged(
+        hostname,
+        elapsed,
+        expectedStartTime,
+        expectedVersion
+      );
+
+      // Re-anchor only when the flush was still valid for the same live session.
+      if (updated !== null) {
+        const live = activeSessions[hostname];
+        if (live && live.startTime === expectedStartTime && getSessionVersion(hostname) === expectedVersion) {
+          activeSessions[hostname].startTime = now;
+          await persistOpenSessions();
+        }
+      }
     }
     // Update badge color and ping content script with current status
     await updateBadge(hostname);
@@ -425,10 +486,12 @@ async function handleMessage(msg, sender) {
 
     case 'RESET_TIMER': {
       const { hostname } = msg;
+      bumpSessionVersion(hostname);
       const data = await getSiteData(hostname);
       const today = todayKey();
       data.sessions[today] = { accumulated: 0 };
       await saveSiteData(hostname, data);
+      await chrome.storage.local.remove(`__exceeded__${hostname}`);
       if (activeSessions[hostname]) {
         activeSessions[hostname].startTime = Date.now();
       }

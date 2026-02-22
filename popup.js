@@ -104,6 +104,8 @@ function updateTimerDisplay(seconds) {
   const pct = Math.min((seconds / limitSecs) * 100, 100);
   const bar = document.getElementById('progress-bar');
   bar.style.width = pct + '%';
+  document.getElementById('progress-warning').style.display = 'none';
+  document.getElementById('exceeded-warning').style.display = 'none';
 
   // Color phases
   bar.classList.remove('yellow', 'orange', 'red', 'over');
@@ -124,12 +126,15 @@ function updateTimerDisplay(seconds) {
 
 let liveBase = 0;      // accumulated seconds from last sync
 let liveSyncAt = 0;    // Date.now() when liveBase was set
-
+let justReset = false;  //added to reset the timer after clicking reset
+let lastDisplayedTotal = 0;
 function startLiveUpdate() {
   if (liveInterval) clearInterval(liveInterval);
 
   // Set initial base from the status we already fetched
   liveBase = siteStatus.accumulated || 0;
+  lastDisplayedTotal = liveBase;
+  justReset = true;
   liveSyncAt = Date.now();
 
   let syncCounter = 0;
@@ -140,14 +145,20 @@ function startLiveUpdate() {
     syncCounter++;
     // Re-sync with background every 10 seconds to stay accurate
     if (syncCounter % 10 === 0) {
-      const { accumulated } = await sendMessage({ type: 'GET_LIVE_TIME', hostname: currentHostname });
-      liveBase = accumulated;
-      liveSyncAt = Date.now();
+      if (!justReset) {
+        const { accumulated } = await sendMessage({ type: 'GET_LIVE_TIME', hostname: currentHostname });
+        const localNow = liveBase + Math.floor((Date.now() - liveSyncAt) / 1000);
+        liveBase = Math.max(accumulated, localNow);
+        liveSyncAt = Date.now();
+      }
+      if (justReset) justReset = false;
     }
 
     // Compute current total locally — no async wait, perfectly smooth
     const localElapsed = Math.floor((Date.now() - liveSyncAt) / 1000);
-    const total = liveBase + localElapsed;
+    let total = liveBase + localElapsed;
+    total = Math.max(total, lastDisplayedTotal);
+    lastDisplayedTotal = total;
     updateTimerDisplay(total);
   }, 1000); // ← every second for smooth clock
 }
@@ -207,6 +218,8 @@ document.getElementById('btn-reset-timer').addEventListener('click', async () =>
     siteStatus = await sendMessage({ type: 'GET_SITE_STATUS', hostname: currentHostname });
     liveBase = 0;
     liveSyncAt = Date.now();
+    lastDisplayedTotal = 0;
+    justReset = true;
     document.getElementById('exceeded-warning').style.display = 'none';
     document.getElementById('progress-warning').style.display = 'none';
     render();
