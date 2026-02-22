@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TimeGuard</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- HEADER -->
+    <header>
+      <div class="logo">
+        <span class="logo-icon">⏱</span>
+        <span class="logo-text">TimeGuard</span>
+      </div>
+      <button id="btn-dashboard" class="icon-btn" title="Open Dashboard">📊</button>
+    </header>
+
+    <!-- SITE INFO -->
+    <div id="site-info">
+      <div id="hostname-badge"></div>
+    </div>
+
+    <!-- LOADING -->
+    <div id="loading" class="center">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <main id="main-content" style="display:none">
+
+      <!-- Previous Visit Banner -->
+      <div id="prev-visit-banner" class="banner" style="display:none">
+        <div class="banner-title">📅 Previous Visit</div>
+        <div id="prev-visit-info"></div>
+      </div>
+
+      <!-- Remark Needed Banner -->
+      <div id="remark-needed-banner" class="banner banner-warn" style="display:none">
+        <div class="banner-title">💬 Leave a remark for yesterday?</div>
+        <textarea id="remark-needed-input" placeholder="How do you feel about your time here?"></textarea>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="btn-skip-remark">Skip</button>
+          <button class="btn btn-primary" id="btn-save-remark-needed">Save</button>
+        </div>
+      </div>
+
+      <!-- NO LIMIT SET -->
+      <div id="section-no-limit" style="display:none">
+        <div class="prompt-text">Want to set a time limit for this site?</div>
+        <div id="today-time-display" class="time-passive"></div>
+        <div class="btn-row mt">
+          <button class="btn btn-secondary" id="btn-no-limit">No Thanks</button>
+          <button class="btn btn-primary" id="btn-set-limit">Set Limit</button>
+        </div>
+      </div>
+
+      <!-- SET LIMIT FORM -->
+      <div id="section-set-limit-form" style="display:none">
+        <div class="form-group">
+          <label>Time Limit (minutes)</label>
+          <input type="number" id="input-time-limit" min="1" max="480" placeholder="e.g. 30">
+        </div>
+        <div class="form-group">
+          <label>Reminder every (minutes)</label>
+          <select id="input-reminder">
+            <option value="5">Every 5 min</option>
+            <option value="10" selected>Every 10 min</option>
+            <option value="20">Every 20 min</option>
+            <option value="30">Every 30 min</option>
+          </select>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="btn-cancel-limit">Cancel</button>
+          <button class="btn btn-primary" id="btn-save-limit">Start Timer</button>
+        </div>
+      </div>
+
+      <!-- TIMER ACTIVE -->
+      <div id="section-timer" style="display:none">
+        <div class="timer-display">
+          <div class="time-spent" id="time-spent-display">0:00</div>
+          <div class="time-limit-label" id="time-limit-label"></div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-container">
+          <div class="progress-bar" id="progress-bar"></div>
+          <div class="progress-warning" id="progress-warning" style="display:none">⚠️</div>
+        </div>
+        <div class="progress-labels">
+          <span>0</span>
+          <span id="progress-limit-label"></span>
+        </div>
+
+        <!-- Current Remark -->
+        <div class="remark-section">
+          <label>Your note for this session</label>
+          <textarea id="remark-input" placeholder="Add a note… (optional)"></textarea>
+          <button class="btn btn-secondary btn-sm" id="btn-save-remark-now">Save Note</button>
+        </div>
+
+        <!-- Exceeded Warning -->
+        <div id="exceeded-warning" style="display:none" class="exceeded-box">
+          <div>⏰ Time limit exceeded!</div>
+          <div class="btn-row mt">
+            <button class="btn btn-danger" id="btn-block-site">Block Site</button>
+            <button class="btn btn-secondary" id="btn-continue">Continue Anyway</button>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="action-row">
+          <button class="btn btn-ghost btn-sm" id="btn-reset-timer">🔄 Reset</button>
+          <button class="btn btn-ghost btn-sm" id="btn-change-limit">✏️ Edit Limit</button>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer>
+      <button class="footer-link" id="btn-open-dashboard">Open Full Dashboard →</button>
+    </footer>
+
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
