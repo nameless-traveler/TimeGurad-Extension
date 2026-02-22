@@ -30,17 +30,22 @@
     'height:4px',
     'width:0%',
     'z-index:2147483646',
-    'transition:width 3s linear, background-color 4s ease',
+    'transition:width 0.9s linear, background-color 1.2s ease',
     'pointer-events:none',
     'background:#22c55e',
-    'display:none',  // hidden until we get first update
+    'display:none'
   ].join(';');
 
-  // Wait for DOM to be ready
-  if (document.documentElement) {
-    document.documentElement.appendChild(bar);
-  } else {
-    document.addEventListener('DOMContentLoaded', () => document.documentElement.appendChild(bar));
+  function ensureBarMounted() {
+    if (!document.documentElement) return;
+    if (!bar.isConnected) {
+      document.documentElement.appendChild(bar);
+    }
+  }
+
+  ensureBarMounted();
+  if (!bar.isConnected) {
+    document.addEventListener('DOMContentLoaded', ensureBarMounted, { once: true });
   }
 
   // Returns hex color for a 0..2+ progress ratio (same logic as background.js)
@@ -56,35 +61,88 @@
     return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
   }
 
-  function applyUpdate(accumulated, timeLimit, pct) {
-    if (!timeLimit || pct === null) {
+  function applyUpdate(accumulated, timeLimit, isTracking) {
+    ensureBarMounted();
+    if (!timeLimit) {
       bar.style.display = 'none';
       return;
     }
+    const pct = accumulated / (timeLimit * 60);
     bar.style.display = 'block';
     const fillPct = Math.min(pct * 100, 100); // clamp visual fill at 100%
-    bar.style.width = fillPct + '%';
+    // Very small percentages can be sub-pixel and invisible on large screens.
+    const minVisiblePct = window.innerWidth > 0 ? (2 / window.innerWidth) * 100 : 0;
+    const visualPct = (isTracking || accumulated > 0)
+      ? Math.max(fillPct, minVisiblePct)
+      : fillPct;
+    bar.style.width = visualPct + '%';
     bar.style.backgroundColor = progressColor(pct);
   }
 
-  // Listen for updates pushed from the background tick (every 30s)
+  let liveAccumulated = 0;
+  let liveLimit = null;
+  let liveIsTracking = false;
+  let liveAnchorAt = Date.now();
+  let renderTimer = null;
+  let syncTimer = null;
+  let syncInFlight = false;
+
+  function renderFromAnchor() {
+    const extra = liveIsTracking ? Math.floor((Date.now() - liveAnchorAt) / 1000) : 0;
+    applyUpdate(liveAccumulated + extra, liveLimit, liveIsTracking);
+  }
+
+  async function syncLiveState() {
+    if (syncInFlight) return;
+    syncInFlight = true;
+    try {
+      const live = await chrome.runtime.sendMessage({ type: 'GET_LIVE_TIME', hostname });
+      if (!live) return;
+      liveAccumulated = live.accumulated || 0;
+      liveIsTracking = !!live.isTracking;
+      liveLimit = live.timeLimit || null;
+      liveAnchorAt = Date.now();
+      renderFromAnchor();
+    } catch (e) {
+    } finally {
+      syncInFlight = false;
+    }
+  }
+
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'TG_UPDATE') {
-      applyUpdate(msg.accumulated, msg.timeLimit, msg.pct);
+      liveAccumulated = msg.accumulated || 0;
+      liveLimit = msg.timeLimit || null;
+      liveIsTracking = true;
+      liveAnchorAt = Date.now();
+      renderFromAnchor();
     }
     if (msg.type === 'TG_STOP') {
-      bar.style.display = 'none';
+      liveIsTracking = false;
+      liveAnchorAt = Date.now();
+      renderFromAnchor();
     }
   });
 
-  // Also fetch initial state on load so the bar appears without waiting for first tick
+  // Initial state + continuous updates (1s render, 2s sync)
   try {
     const status = await chrome.runtime.sendMessage({ type: 'GET_SITE_STATUS', hostname });
-    if (status && status.timeLimit) {
-      const pct = status.accumulated / (status.timeLimit * 60);
-      applyUpdate(status.accumulated, status.timeLimit, pct);
+    if (status) {
+      liveAccumulated = status.accumulated || 0;
+      liveLimit = status.timeLimit || null;
+      liveIsTracking = !!status.isTracking;
+      liveAnchorAt = Date.now();
+      renderFromAnchor();
     }
   } catch(e) {}
+
+  await syncLiveState();
+  renderTimer = setInterval(renderFromAnchor, 1000);
+  syncTimer = setInterval(syncLiveState, 2000);
+  window.addEventListener('unload', () => {
+    if (renderTimer) clearInterval(renderTimer);
+    if (syncTimer) clearInterval(syncTimer);
+  });
 
   // ── 3. Block overlay ────────────────────────────────────────────────────────
 

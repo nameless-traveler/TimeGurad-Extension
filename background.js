@@ -579,11 +579,12 @@ async function handleMessage(msg, sender) {
     case 'GET_LIVE_TIME': {
       const { hostname } = msg;
       const isTracking = !!activeSessions[hostname];
+      const data = await getSiteData(hostname);
       let accumulated = await getTodayAccumulated(hostname);
       if (isTracking) {
         accumulated += Math.floor((Date.now() - activeSessions[hostname].startTime) / 1000);
       }
-      return { accumulated, isTracking };
+      return { accumulated, isTracking, timeLimit: data.timeLimit || null };
     }
 
     case 'CLEAR_SITE_DATA': {
