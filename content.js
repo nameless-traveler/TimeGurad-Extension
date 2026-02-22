@@ -86,10 +86,124 @@
   let renderTimer = null;
   let syncTimer = null;
   let syncInFlight = false;
+  let snoozeUntil = 0;
+  let limitPrompt = null;
+
+  function hideLimitPrompt() {
+    if (limitPrompt && limitPrompt.isConnected) {
+      limitPrompt.remove();
+    }
+    limitPrompt = null;
+  }
+
+  function showLimitPrompt() {
+    if (limitPrompt && limitPrompt.isConnected) return;
+
+    limitPrompt = document.createElement('div');
+    limitPrompt.id = 'tg-limit-prompt';
+    limitPrompt.innerHTML = `
+      <style>
+        #tg-limit-prompt {
+          position: fixed;
+          right: 16px;
+          bottom: 16px;
+          z-index: 2147483647;
+          width: 320px;
+          background: #111827;
+          color: #f8fafc;
+          border: 1px solid #374151;
+          border-radius: 12px;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        #tg-limit-prompt .tg-wrap { padding: 14px; }
+        #tg-limit-prompt .tg-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+        #tg-limit-prompt .tg-text { font-size: 12px; color: #cbd5e1; margin-bottom: 12px; line-height: 1.45; }
+        #tg-limit-prompt .tg-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        #tg-limit-prompt .tg-snooze-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+        #tg-limit-prompt button {
+          border: none;
+          border-radius: 8px;
+          padding: 8px 10px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        #tg-limit-close { background: #ef4444; color: #fff; }
+        #tg-limit-snooze-btn { background: #1f2937; color: #e2e8f0; border: 1px solid #475569; }
+        #tg-limit-snooze-min {
+          width: 70px;
+          padding: 7px 8px;
+          border-radius: 8px;
+          border: 1px solid #475569;
+          background: #0f172a;
+          color: #e2e8f0;
+          font-size: 12px;
+        }
+        #tg-limit-snooze-label { font-size: 12px; color: #cbd5e1; }
+      </style>
+      <div class="tg-wrap">
+        <div class="tg-title">Time Limit Reached</div>
+        <div class="tg-text">Close this tab now, or snooze and continue. The prompt will appear again after your snooze ends.</div>
+        <div class="tg-actions">
+          <button id="tg-limit-close">Close Tab</button>
+        </div>
+        <div class="tg-snooze-row">
+          <input id="tg-limit-snooze-min" type="number" min="1" max="30" value="5" />
+          <span id="tg-limit-snooze-label">minutes</span>
+          <button id="tg-limit-snooze-btn">Snooze & Continue</button>
+        </div>
+      </div>
+    `;
+
+    ensureBarMounted();
+    if (document.documentElement) {
+      document.documentElement.appendChild(limitPrompt);
+    }
+
+    limitPrompt.querySelector('#tg-limit-close').addEventListener('click', async () => {
+      try {
+        await chrome.runtime.sendMessage({ type: 'CLOSE_SENDER_TAB' });
+      } catch (e) {}
+    });
+
+    limitPrompt.querySelector('#tg-limit-snooze-btn').addEventListener('click', () => {
+      const input = limitPrompt.querySelector('#tg-limit-snooze-min');
+      let mins = parseInt(input.value, 10);
+      if (Number.isNaN(mins)) mins = 5;
+      mins = Math.max(1, Math.min(30, mins));
+      input.value = String(mins);
+      snoozeUntil = Date.now() + mins * 60 * 1000;
+      hideLimitPrompt();
+    });
+  }
+
+  function evaluateLimitPrompt(currentAccumulated) {
+    if (!liveLimit || !liveIsTracking) {
+      hideLimitPrompt();
+      return;
+    }
+
+    const limitSeconds = liveLimit * 60;
+    if (currentAccumulated < limitSeconds) {
+      snoozeUntil = 0;
+      hideLimitPrompt();
+      return;
+    }
+
+    if (Date.now() < snoozeUntil) {
+      hideLimitPrompt();
+      return;
+    }
+
+    showLimitPrompt();
+  }
 
   function renderFromAnchor() {
     const extra = liveIsTracking ? Math.floor((Date.now() - liveAnchorAt) / 1000) : 0;
-    applyUpdate(liveAccumulated + extra, liveLimit, liveIsTracking);
+    const total = liveAccumulated + extra;
+    applyUpdate(total, liveLimit, liveIsTracking);
+    evaluateLimitPrompt(total);
   }
 
   async function syncLiveState() {
@@ -142,6 +256,7 @@
   window.addEventListener('unload', () => {
     if (renderTimer) clearInterval(renderTimer);
     if (syncTimer) clearInterval(syncTimer);
+    hideLimitPrompt();
   });
 
   // ── 3. Block overlay ────────────────────────────────────────────────────────

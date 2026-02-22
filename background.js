@@ -593,6 +593,18 @@ async function handleMessage(msg, sender) {
       return { ok: true };
     }
 
+    case 'CLOSE_SENDER_TAB': {
+      if (sender && sender.tab && sender.tab.id != null) {
+        try {
+          await chrome.tabs.remove(sender.tab.id);
+          return { ok: true };
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
+      }
+      return { ok: false, error: 'No sender tab.' };
+    }
+
     default:
       return { error: 'Unknown message type' };
   }
