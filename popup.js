@@ -3,6 +3,11 @@
 let currentHostname = null;
 let siteStatus = null;
 let liveInterval = null;
+let liveSyncInterval = null;
+let liveAnchorAccumulated = 0;
+let liveAnchorAt = 0;
+let liveIsTracking = false;
+let liveSyncInFlight = false;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
@@ -126,17 +131,39 @@ function updateTimerDisplay(seconds) {
 
 function startLiveUpdate() {
   if (liveInterval) clearInterval(liveInterval);
+  if (liveSyncInterval) clearInterval(liveSyncInterval);
 
-  const refreshLiveTime = async () => {
+  liveAnchorAccumulated = siteStatus?.accumulated || 0;
+  liveIsTracking = !!siteStatus?.isTracking;
+  liveAnchorAt = Date.now();
+  liveSyncInFlight = false;
+
+  const renderFromAnchor = () => {
     if (!siteStatus || !siteStatus.timeLimit) return;
-    try {
-      const { accumulated } = await sendMessage({ type: 'GET_LIVE_TIME', hostname: currentHostname });
-      updateTimerDisplay(accumulated || 0);
-    } catch (e) {}
+    const extra = liveIsTracking ? Math.floor((Date.now() - liveAnchorAt) / 1000) : 0;
+    updateTimerDisplay(liveAnchorAccumulated + extra);
   };
 
-  refreshLiveTime();
-  liveInterval = setInterval(refreshLiveTime, 1000);
+  const syncAnchor = async () => {
+    if (!siteStatus || !siteStatus.timeLimit || liveSyncInFlight) return;
+    liveSyncInFlight = true;
+    try {
+      const { accumulated, isTracking } = await sendMessage({ type: 'GET_LIVE_TIME', hostname: currentHostname });
+      liveAnchorAccumulated = accumulated || 0;
+      liveIsTracking = !!isTracking;
+      liveAnchorAt = Date.now();
+      renderFromAnchor();
+    } catch (e) {
+      // Keep rendering from last known anchor until next successful sync.
+    } finally {
+      liveSyncInFlight = false;
+    }
+  };
+
+  renderFromAnchor();
+  syncAnchor();
+  liveInterval = setInterval(renderFromAnchor, 1000);
+  liveSyncInterval = setInterval(syncAnchor, 2000);
 }
 
 // ─── Event Handlers ───────────────────────────────────────────────────────────
@@ -192,6 +219,9 @@ document.getElementById('btn-reset-timer').addEventListener('click', async () =>
   if (confirm('Reset today\'s timer for this site?')) {
     await sendMessage({ type: 'RESET_TIMER', hostname: currentHostname });
     siteStatus = await sendMessage({ type: 'GET_SITE_STATUS', hostname: currentHostname });
+    liveAnchorAccumulated = siteStatus.accumulated || 0;
+    liveIsTracking = !!siteStatus.isTracking;
+    liveAnchorAt = Date.now();
     document.getElementById('exceeded-warning').style.display = 'none';
     document.getElementById('progress-warning').style.display = 'none';
     render();
@@ -276,5 +306,9 @@ async function sendMessage(msg) {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
-window.addEventListener('unload', () => { if (liveInterval) clearInterval(liveInterval); });
+window.addEventListener('unload', () => {
+  if (liveInterval) clearInterval(liveInterval);
+  if (liveSyncInterval) clearInterval(liveSyncInterval);
+});
+
 
