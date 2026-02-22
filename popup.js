@@ -124,11 +124,8 @@ function updateTimerDisplay(seconds) {
 
 // ─── Live Timer (local increment for smooth display, re-sync every 10s) ────────
 
-let justReset = false;
 function startLiveUpdate() {
   if (liveInterval) clearInterval(liveInterval);
-
-  justReset = true;
 
   const refreshLiveTime = async () => {
     if (!siteStatus || !siteStatus.timeLimit) return;
@@ -136,7 +133,6 @@ function startLiveUpdate() {
       const { accumulated } = await sendMessage({ type: 'GET_LIVE_TIME', hostname: currentHostname });
       updateTimerDisplay(accumulated || 0);
     } catch (e) {}
-    if (justReset) justReset = false;
   };
 
   refreshLiveTime();
@@ -196,7 +192,6 @@ document.getElementById('btn-reset-timer').addEventListener('click', async () =>
   if (confirm('Reset today\'s timer for this site?')) {
     await sendMessage({ type: 'RESET_TIMER', hostname: currentHostname });
     siteStatus = await sendMessage({ type: 'GET_SITE_STATUS', hostname: currentHostname });
-    justReset = true;
     document.getElementById('exceeded-warning').style.display = 'none';
     document.getElementById('progress-warning').style.display = 'none';
     render();

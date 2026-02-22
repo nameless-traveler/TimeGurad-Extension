@@ -3,7 +3,7 @@
   "name": "TimeGuard – Site Time Tracker",
   "version": "1.0",
   "description": "Track time on websites, set limits, get reminders, and stay mindful of your browsing habits.",
-  "permissions": ["storage", "tabs", "notifications", "alarms", "activeTab"],
+  "permissions": ["storage", "tabs", "windows", "notifications", "alarms", "activeTab"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

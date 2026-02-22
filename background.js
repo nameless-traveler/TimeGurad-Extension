@@ -172,6 +172,21 @@ async function stopTracking(hostname) {
   return elapsed;
 }
 
+async function shouldContinueTracking(hostname, session) {
+  try {
+    const tab = await chrome.tabs.get(session.tabId);
+    if (!tab || !tab.active) return false;
+    if (getHostname(tab.url) !== hostname) return false;
+
+    const win = await chrome.windows.get(tab.windowId);
+    if (!win || !win.focused || win.state === 'minimized') return false;
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function scheduleReminder(hostname) {
   chrome.storage.local.get([hostname, '__settings__'], async (result) => {
     const data = result[hostname] || {};
@@ -250,6 +265,21 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
   }
 });
 
+chrome.windows.onBoundsChanged.addListener(async (window) => {
+  if (!window || window.state !== 'minimized') return;
+
+  for (const [hostname, session] of Object.entries(activeSessions)) {
+    try {
+      const tab = await chrome.tabs.get(session.tabId);
+      if (tab && tab.windowId === window.id) {
+        await stopTracking(hostname);
+      }
+    } catch (e) {
+      await stopTracking(hostname);
+    }
+  }
+});
+
 // ─── Alarms (Tick, Reminders & Daily Reset) ───────────────────────────────────
 
 // 30-second tick: flush live elapsed → storage + refresh badges + ping content scripts
@@ -289,6 +319,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 async function handleTick() {
   const now = Date.now();
   for (const [hostname, session] of Object.entries(activeSessions)) {
+    if (!(await shouldContinueTracking(hostname, session))) {
+      await stopTracking(hostname);
+      continue;
+    }
+
     const expectedStartTime = session.startTime;
     const expectedVersion = getSessionVersion(hostname);
     const elapsed = Math.floor((now - expectedStartTime) / 1000);
