@@ -61,13 +61,21 @@
     return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
   }
 
+  function getDisplayPct(accumulated, timeLimit) {
+    if (snoozeActive && snoozeDurationSeconds > 0) {
+      const snoozeUsed = Math.max(0, accumulated - snoozeStartAccumulated);
+      return snoozeUsed / snoozeDurationSeconds;
+    }
+    return accumulated / (timeLimit * 60);
+  }
+
   function applyUpdate(accumulated, timeLimit, isTracking) {
     ensureBarMounted();
     if (!timeLimit) {
       bar.style.display = 'none';
       return;
     }
-    const pct = accumulated / (timeLimit * 60);
+    const pct = getDisplayPct(accumulated, timeLimit);
     bar.style.display = 'block';
     const fillPct = Math.min(pct * 100, 100); // clamp visual fill at 100%
     // Very small percentages can be sub-pixel and invisible on large screens.
@@ -86,7 +94,10 @@
   let renderTimer = null;
   let syncTimer = null;
   let syncInFlight = false;
-  let snoozeUntil = 0;
+  let latestAccumulated = 0;
+  let snoozeActive = false;
+  let snoozeStartAccumulated = 0;
+  let snoozeDurationSeconds = 0;
   let limitPrompt = null;
 
   function hideLimitPrompt() {
@@ -144,7 +155,7 @@
       </style>
       <div class="tg-wrap">
         <div class="tg-title">Time Limit Reached</div>
-        <div class="tg-text">Close this tab now, or snooze and continue. The prompt will appear again after your snooze ends.</div>
+        <div class="tg-text">Close this tab now, or snooze and continue. The prompt will appear again after snoozed usage is consumed.</div>
         <div class="tg-actions">
           <button id="tg-limit-close">Close Tab</button>
         </div>
@@ -173,7 +184,9 @@
       if (Number.isNaN(mins)) mins = 5;
       mins = Math.max(1, Math.min(30, mins));
       input.value = String(mins);
-      snoozeUntil = Date.now() + mins * 60 * 1000;
+      snoozeActive = true;
+      snoozeStartAccumulated = latestAccumulated;
+      snoozeDurationSeconds = mins * 60;
       hideLimitPrompt();
     });
   }
@@ -186,14 +199,23 @@
 
     const limitSeconds = liveLimit * 60;
     if (currentAccumulated < limitSeconds) {
-      snoozeUntil = 0;
+      snoozeActive = false;
+      snoozeStartAccumulated = 0;
+      snoozeDurationSeconds = 0;
       hideLimitPrompt();
       return;
     }
 
-    if (Date.now() < snoozeUntil) {
-      hideLimitPrompt();
-      return;
+    if (snoozeActive) {
+      const snoozeEndAccumulated = snoozeStartAccumulated + snoozeDurationSeconds;
+      if (currentAccumulated < snoozeEndAccumulated) {
+        hideLimitPrompt();
+        return;
+      }
+      // Snooze budget consumed, show prompt again.
+      snoozeActive = false;
+      snoozeStartAccumulated = 0;
+      snoozeDurationSeconds = 0;
     }
 
     showLimitPrompt();
@@ -202,6 +224,7 @@
   function renderFromAnchor() {
     const extra = liveIsTracking ? Math.floor((Date.now() - liveAnchorAt) / 1000) : 0;
     const total = liveAccumulated + extra;
+    latestAccumulated = total;
     applyUpdate(total, liveLimit, liveIsTracking);
     evaluateLimitPrompt(total);
   }
@@ -253,7 +276,7 @@
   await syncLiveState();
   renderTimer = setInterval(renderFromAnchor, 1000);
   syncTimer = setInterval(syncLiveState, 2000);
-  window.addEventListener('unload', () => {
+  window.addEventListener('pagehide', () => {
     if (renderTimer) clearInterval(renderTimer);
     if (syncTimer) clearInterval(syncTimer);
     hideLimitPrompt();
