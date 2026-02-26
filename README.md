@@ -1,76 +1,58 @@
-# ⏱ TimeGuard – Site Time Tracker
+﻿# ![TimeGuard logo](icons/icon128.png) TimeGuard
 
-A Chrome/Brave browser extension to help you track, limit, and reflect on your browsing habits.
+A Chrome/Brave extension that helps you stay aware of how long you spend on each website.
 
----
+## Installation (Developer Mode)
 
-## 🚀 Installation (Developer Mode)
+1. Unzip this project into a permanent folder.
+2. Open `chrome://extensions` in Chrome or Brave.
+3. Turn on **Developer mode** (top-right).
+4. Click **Load unpacked**.
+5. Select this project folder (`TimeGuard-Extension`).
+6. Pin TimeGuard to your toolbar for quick access.
 
-1. **Unzip** this folder somewhere permanent on your computer
-2. Open Chrome/Brave and navigate to `chrome://extensions`
-3. Toggle **Developer mode** ON (top-right corner)
-4. Click **"Load unpacked"**
-5. Select the unzipped `extension/` folder
-6. The TimeGuard icon will appear in your toolbar — pin it for easy access!
+## What TimeGuard Does
 
----
+- Tracks how long you spend on each site.
+- Lets you set a time limit per website.
+- Sends reminders at your chosen interval.
+- Shows a color progress bar as you approach your limit.
+- Lets you block a site after limit is reached.
+- Saves session notes so you can review habits later.
+- Includes a dashboard for overview, history, and settings.
 
-## 🎯 Features
+## Progress Colors
 
-### When You Visit a Site
-- Click the extension icon to see your time on that site
-- Choose to set a **time limit** (in minutes)
-- Pick a **reminder interval** (every 5, 10, 20, or 30 min)
-- See your **previous visit data** (time spent + your remark)
+- Green: on track
+- Yellow: around halfway
+- Orange: close to limit
+- Red: almost at limit
+- Pulsing red: limit exceeded
 
-### Progress Bar
-- 🟢 **Green** → On track
-- 🟡 **Yellow** → Halfway there
-- 🟠 **Orange** → Getting close
-- 🔴 **Red** → Nearly at limit
-- ⚠️ **Pulsing Red** → Limit exceeded!
+## Dashboard
 
-### When Limit is Exceeded
-- Warning banner appears in the popup
-- Option to **Block the Site** (shows a block screen on reload)
-- Option to **Continue Anyway**
+- **Overview:** Sites tracked today with progress bars.
+- **History:** Records grouped by day.
+- **Settings:** Reminder defaults, auto-block, daily reset, and data clear.
 
-### Reminders
-- Desktop notifications at your chosen interval
-- Shows time spent + remaining time in the notification
+## Privacy
 
-### Remarks / Notes
-- Leave a note for any session (e.g. "Spent too long on Reddit")
-- Notes appear next time you visit the site
-- Edit notes anytime from the Dashboard
+- All data stays on your device (`chrome.storage.local`).
+- No analytics, no server sync, no external data collection.
 
-### Dashboard (`📊` button)
-- **Overview Tab**: All sites tracked today, with progress bars
-- **History Tab**: Grouped by day — Today, Yesterday, This Week
-- **Settings Tab**: Default reminder interval, auto-block toggle, daily reset
+## Project Structure
 
-### Daily Reset
-- Timers reset automatically at midnight
-- Full history is preserved — daily totals are never lost
-
----
-
-## 🔒 Privacy
-
-- All data is stored **locally** in your browser using `chrome.storage.local`
-- No data is sent to any server
-- You can clear all data from Settings → "Clear All"
-
----
-
-## 📁 File Structure
-
+```text
+TimeGuard-Extension/
+|- manifest.json
+|- background.js
+|- content.js
+|- popup.html / popup.css / popup.js
+|- dashboard.html / dashboard.css / dashboard.js
+`- icons/
 ```
-extension/
-├── manifest.json       # Extension config (Manifest V3)
-├── background.js       # Service worker: time tracking, reminders, alarms
-├── content.js          # Injected script: site blocking overlay
-├── popup.html/css/js   # Extension popup UI
-├── dashboard.html/css/js # Full dashboard page
-└── icons/              # Extension icons
-```
+
+## Notes
+
+- Timers reset at midnight.
+- History remains available for review.
